@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector for local development and testing
+  postgres:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - dev
+
+  # Agent service
+  agent:
+    build:
+      context: ./4_Pydantic_AI_Agent
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./4_Pydantic_AI_Agent:/app
+    environment:
+      # OpenAI configuration
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_CHOICE=${LLM_CHOICE}
+      - VISION_LLM_CHOICE=${VISION_LLM_CHOICE}
+      
+      # OpenAI embeddings
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_MODEL_CHOICE=${EMBEDDING_MODEL_CHOICE}
+      
+      # Hosted Supabase configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      
+      # Brave web search
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL}
+
+  # RAG Pipeline service for Google Drive
+  rag-pipeline-google-drive:
+    build:
+      context: ./4_Pydantic_AI_Agent/RAG_Pipeline
+      dockerfile: Dockerfile
+    volumes:
+      - ./4_Pydantic_AI_Agent/RAG_Pipeline:/app
+      - ./credentials:/app/Google_Drive/credentials
+    environment:
+      # OpenAI embeddings
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_MODEL_CHOICE=${EMBEDDING_MODEL_CHOICE}
+      
+      # Hosted Supabase configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    command: python Google_Drive/main.py
+
+  # Deno MCP server for code execution (optional)
+  mcp-server:
+    image: denoland/deno:latest
+    ports:
+      - "8765:8765"
+    command: >
+      run -N -R=node_modules -W=node_modules --node-modules-dir=auto jsr:@pydantic/mcp-run-python sse
+    volumes:
+      - ./4_Pydantic_AI_Agent:/app
+    working_dir: /app
+
+volumes:
+  postgres-data:

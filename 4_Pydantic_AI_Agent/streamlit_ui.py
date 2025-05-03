@@ -1,9 +1,9 @@
+import os
 from pydantic_ai import Agent
 from httpx import AsyncClient
 import streamlit as st
 import requests
 import asyncio
-import os
 
 from agent import agent, AgentDeps
 from clients import get_agent_clients, get_mem0_client

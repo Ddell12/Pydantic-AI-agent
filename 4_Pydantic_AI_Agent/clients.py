@@ -94,12 +94,17 @@ def get_mem0_client():
             config["embedder"]["config"]["ollama_base_url"] = embedding_base_url.replace("/v1", "")
     
     # Configure Supabase vector store
+    db_url = os.environ.get('DATABASE_URL', '')
+    # Ensure the connection string uses the standard 'postgresql://' scheme
+    if db_url.startswith('postgres://'):
+        db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        
     config["vector_store"] = {
         "provider": "supabase",
         "config": {
-            "connection_string": os.environ.get('DATABASE_URL', ''),
+            "connection_string": db_url, # Use the potentially modified db_url
             "collection_name": "mem0_memories",
-            "embedding_model_dims": 1536 if embedding_provider == "openai" else 768
+            "embedding_model_dims": 1536 if os.getenv('EMBEDDING_PROVIDER') == "openai" else 768
         }
     }
     

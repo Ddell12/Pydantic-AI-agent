@@ -156,3 +156,140 @@ The following enhancements are planned for future iterations of the course:
    - Docker setup for development environment
    - Docker Compose for multi-container deployment
    - Container orchestration for production
+
+## Enhanced Architecture (Proposed)
+
+Based on analysis of the current implementation, the following architectural improvements are recommended:
+
+### 1. Enhanced Agent Architecture
+
+```
+                      +-------------------+
+                      |   Streamlit UI    |
+                      +--------+----------+
+                               |
+                      +--------v----------+
+                      |    Agent Core     |
+                      |  +-------------+  |
+                      |  | Planning &  |  |
+                      |  | Reasoning   |  |
+                      |  +-------------+  |
+                      |  | Tool        |  |
+                      |  | Selection   |  |
+                      |  +-------------+  |
+                      |  | Evaluation  |  |
+                      |  | System      |  |
+                      |  +-------------+  |
+                      +--------+-----------+
+                               |
+        +--------------------+-+-------------------+
+        |                    |                     |
++-------v--------+  +--------v-------+  +---------v---------+
+| Document Store |  | Memory System  |  |  Agent Tools      |
+| +-----------+ |  | +-----------+  |  | +---------------+ |
+| | Hybrid    | |  | | Tiered    |  |  | | Tool Registry | |
+| | Search    | |  | | Memory    |  |  | +---------------+ |
+| +-----------+ |  | +-----------+  |  | | Meta-Tools    | |
+| | Re-ranking| |  | | Reflection|  |  | +---------------+ |
+| +-----------+ |  | +-----------+  |  | | Error Handling| |
++-------+--------+  +--------+-------+  | +---------------+ |
+        |                    |          +---------+---------+
+        |           +--------v-------+            |
+        +---------->| Vector Database|<-----------+
+                    +----------------+
+```
+
+### 2. Enhanced Memory Architecture
+
+```
++---------------------------+
+|      Memory System        |
++---------------------------+
+|                           |
+| +---------------------+   |
+| | Short-term Memory   |   |
+| | (Conversation)      |   |
+| +---------------------+   |
+|                           |
+| +---------------------+   |
+| | Medium-term Memory  |   |
+| | (Session Context)   |   |
+| +---------------------+   |
+|                           |
+| +---------------------+   |
+| | Long-term Memory    |   |
+| | (User Preferences)  |   |
+| +---------------------+   |
+|                           |
+| +---------------------+   |
+| | Memory Reflection   |   |
+| | & Summarization     |   |
+| +---------------------+   |
+|                           |
++---------------------------+
+```
+
+## Development Roadmap
+
+The following roadmap outlines the recommended improvements to be implemented in future iterations:
+
+### Phase 6: Enhanced Planning and Reasoning
+- Implement ReAct (Reasoning and Acting) patterns
+- Add dedicated planning step in agent workflow
+- Develop structured thinking mechanisms for complex reasoning tasks
+
+### Phase 7: Tool Selection and Optimization
+- Create intelligent tool selection mechanism
+- Implement tool usage tracking and analytics
+- Develop meta-tools for complex task chains
+
+### Phase 8: Advanced Memory System
+- Implement tiered memory architecture
+- Add memory summarization capabilities
+- Create memory reflection mechanisms
+- Develop relevance-based memory management
+
+### Phase 9: Resilience and Error Handling
+- Add comprehensive error recovery strategies
+- Implement automatic retries with exponential backoff
+- Create fallback mechanisms for tool failures
+- Add validation of tool outputs
+
+### Phase 10: Conversation Management
+- Implement topic tracking across conversation turns
+- Add conversation summarization for lengthy interactions
+- Create user preference learning system
+- Improve handling of ambiguous queries
+
+### Phase 11: Enhanced RAG Capabilities
+- Implement hybrid search (semantic + keyword)
+- Add re-ranking of search results based on relevance
+- Develop cross-document reasoning capabilities
+- Create guided retrieval strategies
+
+### Phase 12: Evaluation and Learning
+- Implement self-evaluation of responses
+- Add user feedback collection and processing
+- Create logging for successful and unsuccessful interactions
+- Implement A/B testing for different response strategies
+
+### Phase 13: Agent Personality and Communication
+- Define consistent personality in system prompt
+- Add support for different communication styles
+- Improve handling of emotional context
+- Implement multi-modal communication
+
+### Phase 14: Security and Authentication
+- Add proper authentication for agent and tools
+- Implement rate limiting
+- Create audit logging for sensitive operations
+- Add content filtering for inputs and outputs
+
+### Phase 15: Technical Improvements
+- Centralize configuration management
+- Further modularize tools into separate files
+- Improve documentation with comprehensive docstrings
+- Enhance testing with integration and end-to-end tests
+- Implement caching for expensive operations
+- Add observability with logging, metrics, and tracing
+- Containerize the application with Docker
