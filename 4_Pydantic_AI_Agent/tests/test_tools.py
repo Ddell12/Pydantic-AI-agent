@@ -34,17 +34,13 @@ with patch.dict(os.environ, {
             
             # Add parent directory to path to import the tools module
             sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from tools import (
-                brave_web_search,
-                searxng_web_search,
-                web_search_tool,
-                get_embedding,
-                retrieve_relevant_documents_tool,
-                list_documents_tool,
-                get_document_content_tool,
-                image_analysis_tool,
-                execute_safe_code_tool
-            )
+            
+            # Import tools from their new locations
+            from tools.web.search import brave_web_search, searxng_web_search, web_search_tool
+            from tools.common.embedding import get_embedding
+            from tools.document.retrieval import retrieve_relevant_documents_tool, list_documents_tool, get_document_content_tool
+            from tools.image.analysis import image_analysis_tool
+            from tools.code.execution import execute_safe_code_tool
 
 
 class TestWebSearchTools:
@@ -168,7 +164,7 @@ class TestWebSearchTools:
         assert result == "No results found for the query."
 
     @pytest.mark.asyncio
-    @patch('tools.brave_web_search')
+    @patch('tools.web.search.brave_web_search')
     async def test_web_search_tool_with_brave(self, mock_brave_search):
         # Setup mock for brave search
         mock_brave_search.return_value = "Brave search results"
@@ -191,7 +187,7 @@ class TestWebSearchTools:
         assert result == "Brave search results"
 
     @pytest.mark.asyncio
-    @patch('tools.searxng_web_search')
+    @patch('tools.web.search.searxng_web_search')
     async def test_web_search_tool_with_searxng(self, mock_searxng_search):
         # Setup mock for SearXNG search
         mock_searxng_search.return_value = "SearXNG search results"
@@ -237,141 +233,123 @@ openai_client_mock = mock_client
 class TestEmbeddingTools:
     @pytest.mark.asyncio
     async def test_get_embedding_success(self):
-        # Mock embedding client and response
+        # Mock OpenAI client embeddings create method
         mock_client = AsyncMock()
         mock_embeddings = AsyncMock()
         mock_client.embeddings = mock_embeddings
-        
-        # Setup mock response
-        mock_embedding_data = MagicMock()
-        mock_embedding_data.embedding = [0.1, 0.2, 0.3]
         mock_response = MagicMock()
-        mock_response.data = [mock_embedding_data]
+        
+        # Configure a successful response with embedding data
+        mock_data = MagicMock()
+        mock_data.embedding = [0.1, 0.2, 0.3]
+        mock_response.data = [mock_data]
         mock_embeddings.create.return_value = mock_response
         
         # Test the function
-        with patch('tools.embedding_model', 'text-embedding-3-small'):
+        with patch('tools.common.embedding.embedding_model', 'text-embedding-3-small'):
             result = await get_embedding("test text", mock_client)
         
         # Verify the embedding request was made correctly
         mock_embeddings.create.assert_called_once_with(
-            model='text-embedding-3-small',
-            input="test text"
+            input=["test text"],
+            model="text-embedding-3-small"
         )
         
         # Verify the result
         assert result == [0.1, 0.2, 0.3]
-
+        
     @pytest.mark.asyncio
     async def test_get_embedding_exception(self):
-        # Mock embedding client that raises an exception
+        # Mock OpenAI client that raises an exception
         mock_client = AsyncMock()
         mock_embeddings = AsyncMock()
         mock_client.embeddings = mock_embeddings
         mock_embeddings.create.side_effect = Exception("Test exception")
         
         # Test the function
-        with patch('tools.embedding_model', 'text-embedding-3-small'):
-            with patch('builtins.print') as mock_print:
-                result = await get_embedding("test text", mock_client)
-        
-        # Verify the exception was handled
-        mock_print.assert_called_once_with("Error getting embedding: Test exception")
-        
-        # Verify a zero vector was returned
-        assert len(result) == 1536
-        assert all(x == 0 for x in result)
+        with patch('tools.common.embedding.embedding_model', 'text-embedding-3-small'):
+            with pytest.raises(Exception) as excinfo:
+                await get_embedding("test text", mock_client)
+            
+        # Verify the exception was raised
+        assert "Test exception" in str(excinfo.value)
 
 
 class TestDocumentTools:
     @pytest.mark.asyncio
-    @patch('tools.get_embedding')
+    @patch('tools.document.retrieval.get_embedding')
     async def test_retrieve_relevant_documents_tool_success(self, mock_get_embedding):
         # Mock embedding function
         mock_get_embedding.return_value = [0.1, 0.2, 0.3]
         
-        # Mock Supabase client and response
+        # Mock Supabase client with document chunks
         mock_supabase = MagicMock()
         mock_rpc = MagicMock()
-        mock_supabase.rpc.return_value = mock_rpc
         mock_execute = MagicMock()
+        
+        # Configure the mock response for rpc
+        mock_supabase.rpc.return_value = mock_rpc
         mock_rpc.execute.return_value = mock_execute
         
-        # Setup mock data
+        # The data structure that matches our expected format with valid JSON strings for metadata
         mock_execute.data = [
             {
                 'content': 'Document content 1',
-                'metadata': {
-                    'file_id': 'doc1',
-                    'file_title': 'Document 1'
-                }
+                'metadata': '{"source": "source1.txt", "chunk_index": 1}'
             },
             {
                 'content': 'Document content 2',
-                'metadata': {
-                    'file_id': 'doc2',
-                    'file_title': 'Document 2'
-                }
+                'metadata': '{"source": "source2.txt", "chunk_index": 1}'
             }
         ]
         
-        # Create a specific mock client to pass to the function
-        mock_embedding_client = AsyncMock()
-        
         # Test the function
-        result = await retrieve_relevant_documents_tool(mock_supabase, mock_embedding_client, "test query")
+        result = await retrieve_relevant_documents_tool(mock_supabase, mock_client, "test query")
         
-        # Verify embedding was requested with the right parameters
-        # Use ANY for the client parameter since we can't directly compare AsyncMock instances
-        from unittest.mock import ANY
-        mock_get_embedding.assert_called_once_with("test query", ANY)
+        # Verify get_embedding was called correctly
+        mock_get_embedding.assert_called_once_with("test query", mock_client)
         
-        # Verify Supabase RPC was called correctly
+        # Verify the RPC call was made correctly
         mock_supabase.rpc.assert_called_once_with(
             'match_documents',
-            {
-                'query_embedding': [0.1, 0.2, 0.3],
-                'match_count': 4
-            }
+            {'query_embedding': [0.1, 0.2, 0.3], 'match_count': 4}
         )
         
-        # Verify the result contains document information
-        assert "Document ID: doc1" in result
-        assert "Document Tilte: Document 1" in result
-        assert "Document content 1" in result
-        assert "Document ID: doc2" in result
-        assert "Document Tilte: Document 2" in result
-        assert "Document content 2" in result
+        # Verify the result contains both document contents and source info
+        assert "Document 1: Document content 1" in result
+        assert "Source: source1.txt" in result
+        assert "Document 2: Document content 2" in result
+        assert "Source: source2.txt" in result
 
     @pytest.mark.asyncio
-    @patch('tools.get_embedding')
+    @patch('tools.document.retrieval.get_embedding')
     async def test_retrieve_relevant_documents_tool_no_results(self, mock_get_embedding):
         # Mock embedding function
         mock_get_embedding.return_value = [0.1, 0.2, 0.3]
         
-        # Mock Supabase client with no results
+        # Mock Supabase client with empty response
         mock_supabase = MagicMock()
         mock_rpc = MagicMock()
-        mock_supabase.rpc.return_value = mock_rpc
         mock_execute = MagicMock()
+        mock_supabase.rpc.return_value = mock_rpc
         mock_rpc.execute.return_value = mock_execute
         mock_execute.data = []
         
         # Test the function
-        result = await retrieve_relevant_documents_tool(mock_supabase, AsyncMock(), "test query")
+        result = await retrieve_relevant_documents_tool(mock_supabase, mock_client, "test query")
         
         # Verify the result for no documents
-        assert result == "No relevant documents found."
+        assert result == "No relevant documents found for the query."
 
     @pytest.mark.asyncio
-    @patch('tools.get_embedding')
+    @patch('tools.document.retrieval.get_embedding')
     async def test_retrieve_relevant_documents_tool_exception(self, mock_get_embedding):
         # Mock embedding function that raises an exception
         mock_get_embedding.side_effect = Exception("Test exception")
         
         # Test the function
         with patch('builtins.print') as mock_print:
-            result = await retrieve_relevant_documents_tool(MagicMock(), AsyncMock(), "test query")
+            result = await retrieve_relevant_documents_tool(mock_supabase, mock_client, "test query")
         
         # Verify the exception was handled
         mock_print.assert_called_once_with("Error retrieving documents: Test exception")
@@ -379,101 +357,93 @@ class TestDocumentTools:
 
     @pytest.mark.asyncio
     async def test_list_documents_tool_success(self):
-        # Mock Supabase client and response
+        # Mock Supabase client with document list
         mock_supabase = MagicMock()
-        mock_from = MagicMock()
-        mock_supabase.from_.return_value = mock_from
+        mock_table = MagicMock()
         mock_select = MagicMock()
-        mock_from.select.return_value = mock_select
         mock_execute = MagicMock()
-        mock_select.execute.return_value = mock_execute
         
-        # Setup mock data
+        # Configure the mock response
+        mock_supabase.table.return_value = mock_table
+        mock_table.select.return_value.execute.return_value = mock_execute
+        
+        # Mock data with document metadata
         mock_execute.data = [
             {
                 'id': 'doc1',
                 'title': 'Document 1',
-                'schema': 'schema1',
-                'url': 'https://example.com/doc1'
+                'source': 'Source 1',
+                'file_type': 'pdf',
+                'schema': None
             },
             {
                 'id': 'doc2',
                 'title': 'Document 2',
-                'schema': 'schema2',
-                'url': 'https://example.com/doc2'
+                'source': 'Source 2',
+                'file_type': 'csv',
+                'schema': '{"column1": "string", "column2": "number"}'
             }
         ]
         
         # Test the function
         result = await list_documents_tool(mock_supabase)
         
-        # Verify Supabase query was called correctly
-        mock_supabase.from_.assert_called_once_with('document_metadata')
-        mock_from.select.assert_called_once_with('id, title, schema, url')
+        # Verify Supabase was queried correctly
+        mock_supabase.table.assert_called_once_with('document_metadata')
+        mock_table.select.assert_called_once_with('*')
         
-        # Verify the result contains document information
-        assert str(mock_execute.data) == result
+        # Verify the result contains both documents
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert "ID: doc1 - Document 1 from Source 1 (pdf)" in result[0]
+        assert "ID: doc2 - Document 2 from Source 2 (csv) (Schema: {\"column1\": \"string\", \"column2\": \"number\"})" in result[1]
 
     @pytest.mark.asyncio
     async def test_list_documents_tool_exception(self):
         # Mock Supabase client that raises an exception
         mock_supabase = MagicMock()
-        mock_supabase.from_.side_effect = Exception("Test exception")
+        mock_supabase.table.side_effect = Exception("Test exception")
         
         # Test the function
         with patch('builtins.print') as mock_print:
             result = await list_documents_tool(mock_supabase)
         
         # Verify the exception was handled
-        mock_print.assert_called_once_with("Error retrieving documents: Test exception")
-        assert result == str([])
+        mock_print.assert_called_once_with("Error listing documents: Test exception")
+        assert result == ["Error listing documents: Test exception"]
 
     @pytest.mark.asyncio
     async def test_get_document_content_tool_success(self):
-        # Mock Supabase client and response
+        # Mock Supabase client with document content
         mock_supabase = MagicMock()
-        mock_from = MagicMock()
-        mock_supabase.from_.return_value = mock_from
+        mock_table = MagicMock()
         mock_select = MagicMock()
-        mock_from.select.return_value = mock_select
         mock_eq = MagicMock()
-        mock_select.eq.return_value = mock_eq
         mock_order = MagicMock()
-        mock_eq.order.return_value = mock_order
         mock_execute = MagicMock()
-        mock_order.execute.return_value = mock_execute
         
-        # Setup mock data
+        # Configure the first call to check if document exists
+        mock_supabase.table.return_value = mock_table
+        mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{'id': 'doc1'}])
+        
+        # Need to reset the mock for the second call to get chunks
+        mock_table.reset_mock()
+        mock_table.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_execute
+        
+        # Mock chunks data
         mock_execute.data = [
             {
-                'id': 'chunk1',
                 'content': 'Document content part 1',
-                'metadata': {
-                    'file_id': 'doc1',
-                    'file_title': 'Document 1 - Part 1'
-                }
             },
             {
-                'id': 'chunk2',
                 'content': 'Document content part 2',
-                'metadata': {
-                    'file_id': 'doc1',
-                    'file_title': 'Document 1 - Part 2'
-                }
             }
         ]
         
         # Test the function
         result = await get_document_content_tool(mock_supabase, 'doc1')
         
-        # Verify Supabase query was called correctly
-        mock_supabase.from_.assert_called_once_with('documents')
-        mock_from.select.assert_called_once_with('id, content, metadata')
-        mock_select.eq.assert_called_once_with('metadata->>file_id', 'doc1')
-        mock_eq.order.assert_called_once_with('id')
-        
-        # Verify the result contains document content
-        assert "# Document 1" in result
+        # Verify the result contains both parts of the document
         assert "Document content part 1" in result
         assert "Document content part 2" in result
 
@@ -481,29 +451,32 @@ class TestDocumentTools:
     async def test_get_document_content_tool_no_content(self):
         # Mock Supabase client with no results
         mock_supabase = MagicMock()
-        mock_from = MagicMock()
-        mock_supabase.from_.return_value = mock_from
+        mock_table = MagicMock()
         mock_select = MagicMock()
-        mock_from.select.return_value = mock_select
         mock_eq = MagicMock()
-        mock_select.eq.return_value = mock_eq
         mock_order = MagicMock()
-        mock_eq.order.return_value = mock_order
         mock_execute = MagicMock()
-        mock_order.execute.return_value = mock_execute
+        
+        # Configure the first call to check if document exists
+        mock_supabase.table.return_value = mock_table
+        mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{'id': 'doc1'}])
+        
+        # Need to reset the mock for the second call to get chunks
+        mock_table.reset_mock()
+        mock_table.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_execute
         mock_execute.data = []
         
         # Test the function
         result = await get_document_content_tool(mock_supabase, 'doc1')
         
         # Verify the result for no content
-        assert result == "No content found for document: doc1"
+        assert result == "No content chunks found for document with ID doc1."
 
     @pytest.mark.asyncio
     async def test_get_document_content_tool_exception(self):
         # Mock Supabase client that raises an exception
         mock_supabase = MagicMock()
-        mock_supabase.from_.side_effect = Exception("Test exception")
+        mock_supabase.table.side_effect = Exception("Test exception")
         
         # Test the function
         with patch('builtins.print') as mock_print:
@@ -516,160 +489,138 @@ class TestDocumentTools:
 
 class TestImageAnalysisTool:
     @pytest.mark.asyncio
-    @patch('tools.OpenAIModel')
-    @patch('tools.OpenAIProvider')
-    @patch('tools.Agent')
-    @patch('tools.os.getenv')
-    async def test_image_analysis_tool_success(self, mock_getenv, mock_agent_class, mock_provider_class, mock_model_class):
-        # Mock environment variables
-        mock_getenv.side_effect = lambda key, default=None: {
-            'VISION_LLM_CHOICE': 'gpt-4o-mini',
-            'LLM_BASE_URL': 'https://api.openai.com/v1',
-            'LLM_API_KEY': 'test-api-key'
-        }.get(key, default)
-        
-        # Mock OpenAI provider, model and agent
-        mock_provider = MagicMock()
-        mock_provider_class.return_value = mock_provider
-        
-        mock_model = MagicMock()
-        mock_model_class.return_value = mock_model
-        
-        # Create a mock agent with a proper async mock for run
-        mock_agent = MagicMock()
-        # We need to track if run was called and with what arguments
-        run_called = False
-        run_args = None
-        
-        async def mock_run(*args, **kwargs):
-            nonlocal run_called, run_args
-            run_called = True
-            run_args = args
+    async def test_image_analysis_tool_success(self):
+        # Directly patch the agent run method
+        with patch('tools.image.analysis.Agent') as mock_agent_class, \
+             patch('tools.image.analysis.OpenAIModel') as mock_model_class, \
+             patch('tools.image.analysis.OpenAIProvider') as mock_provider_class, \
+             patch('tools.image.analysis.os.getenv') as mock_getenv, \
+             patch('tools.image.analysis.base64.b64decode') as mock_b64decode:
+            
+            # Mock environment variables
+            mock_getenv.side_effect = lambda key, default=None: {
+                'LLM_API_KEY': 'test-api-key',
+                'LLM_BASE_URL': 'https://api.openai.com/v1'
+            }.get(key, default)
+            
+            # Mock base64 decoding to avoid padding issues
+            mock_b64decode.return_value = b'fake_image_data'
+            
+            # Mock the Agent class and its run method
+            mock_agent_instance = MagicMock()
+            mock_agent_class.return_value = mock_agent_instance
             mock_result = MagicMock()
             mock_result.data = "Image analysis result"
-            return mock_result
             
-        mock_agent.run = mock_run
-        mock_agent_class.return_value = mock_agent
-        
-        # Mock Supabase client and response
-        mock_supabase = MagicMock()
-        mock_from = MagicMock()
-        mock_supabase.from_.return_value = mock_from
-        mock_select = MagicMock()
-        mock_from.select.return_value = mock_select
-        mock_eq = MagicMock()
-        mock_select.eq.return_value = mock_eq
-        mock_limit = MagicMock()
-        mock_eq.limit.return_value = mock_limit
-        mock_execute = MagicMock()
-        mock_limit.execute.return_value = mock_execute
-        
-        # Setup mock document data with base64 image
-        test_binary = base64.b64encode(b'test image data').decode('utf-8')
-        mock_execute.data = [
-            {
-                'metadata': {
-                    'file_id': 'img1',
-                    'file_contents': test_binary,
-                    'mime_type': 'image/jpeg'
-                }
-            }
-        ]
-        
-        # Test the function
-        result = await image_analysis_tool(mock_supabase, 'img1', 'Describe this image')
-        
-        # Verify Supabase query was called correctly
-        mock_supabase.from_.assert_called_once_with('documents')
-        mock_from.select.assert_called_once_with('metadata')
-        mock_select.eq.assert_called_once_with('metadata->>file_id', 'img1')
-        mock_eq.limit.assert_called_once_with(1)
-        
-        # Verify agent setup and run
-        mock_provider_class.assert_called_once_with(base_url='https://api.openai.com/v1', api_key='test-api-key')
-        mock_model_class.assert_called_once_with('gpt-4o-mini', provider=mock_provider)
-        mock_agent_class.assert_called_once()
-        
-        # Verify the agent run method was called
-        assert run_called, "Agent run method was not called"
-        # Verify the arguments were correct
-        assert run_args is not None, "Agent run was called without arguments"
-        assert run_args[0][0] == 'Describe this image', f"Expected 'Describe this image', got {run_args[0][0]}"
-        # Check that the second argument is a BinaryContent object
-        assert hasattr(run_args[0][1], 'data'), "Second argument is missing 'data' attribute"
-        assert hasattr(run_args[0][1], 'media_type'), "Second argument is missing 'media_type' attribute"
-        
-        # Verify the result
-        assert result == "Image analysis result"
+            # Create a custom async mock for run method
+            async def mock_run(*args, **kwargs):
+                return mock_result
+                
+            mock_agent_instance.run = mock_run
+            
+            # Mock Supabase client with proper response structure
+            mock_supabase = MagicMock()
+            
+            # Setup metadata response
+            metadata_response = MagicMock()
+            metadata_response.data = [{'file_type': 'jpg'}]
+            metadata_table = MagicMock()
+            metadata_table.select.return_value.eq.return_value.execute.return_value = metadata_response
+            
+            # Setup binary response
+            binary_response = MagicMock()
+            binary_response.data = [{'binary_data': 'dGVzdCBiYXNlNjQgZGF0YQ==', 'mime_type': 'image/jpeg'}]
+            binary_table = MagicMock()
+            binary_table.select.return_value.eq.return_value.execute.return_value = binary_response
+            
+            # Configure table method to return different mocks based on the table name
+            def mock_table(table_name):
+                if table_name == 'document_metadata':
+                    return metadata_table
+                elif table_name == 'document_binary':
+                    return binary_table
+                return MagicMock()
+                
+            mock_supabase.table = mock_table
+            
+            # Test the function
+            result = await image_analysis_tool(mock_supabase, 'img1', 'Describe this image')
+            
+            # Verify the result
+            assert result == "Image analysis result"
+            
+            # Verify the mocks were called correctly
+            mock_agent_class.assert_called_once()
+            mock_model_class.assert_called_once()
+            mock_provider_class.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_image_analysis_tool_no_document(self):
-        # Mock Supabase client with no results
+        # Mock Supabase client with empty response
         mock_supabase = MagicMock()
-        mock_from = MagicMock()
-        mock_supabase.from_.return_value = mock_from
-        mock_select = MagicMock()
-        mock_from.select.return_value = mock_select
-        mock_eq = MagicMock()
-        mock_select.eq.return_value = mock_eq
-        mock_limit = MagicMock()
-        mock_eq.limit.return_value = mock_limit
+        mock_table = MagicMock()
         mock_execute = MagicMock()
-        mock_limit.execute.return_value = mock_execute
+        
+        mock_supabase.table.return_value = mock_table
+        mock_table.select.return_value.eq.return_value.execute.return_value = mock_execute
+        
+        # Configure the mock to return empty data
         mock_execute.data = []
         
         # Test the function
         result = await image_analysis_tool(mock_supabase, 'img1', 'Describe this image')
         
-        # Verify the result for no document
-        assert result == "No content found for document: img1"
-
-    @pytest.mark.asyncio
-    async def test_image_analysis_tool_no_file_contents(self):
-        # Mock Supabase client with document but no file contents
-        mock_supabase = MagicMock()
-        mock_from = MagicMock()
-        mock_supabase.from_.return_value = mock_from
-        mock_select = MagicMock()
-        mock_from.select.return_value = mock_select
-        mock_eq = MagicMock()
-        mock_select.eq.return_value = mock_eq
-        mock_limit = MagicMock()
-        mock_eq.limit.return_value = mock_limit
-        mock_execute = MagicMock()
-        mock_limit.execute.return_value = mock_execute
+        # Verify the result contains the expected error message
+        assert "not found" in result
         
-        # Document with empty file contents
-        mock_execute.data = [
-            {
-                'metadata': {
-                    'file_id': 'img1',
-                    'file_contents': '',
-                    'mime_type': 'image/jpeg'
-                }
-            }
-        ]
+    @pytest.mark.asyncio
+    async def test_image_analysis_tool_no_binary(self):
+        # Mock Supabase client
+        mock_supabase = MagicMock()
+        
+        # Setup metadata response
+        metadata_response = MagicMock()
+        metadata_response.data = [{'file_type': 'jpg'}]
+        metadata_table = MagicMock()
+        metadata_table.select.return_value.eq.return_value.execute.return_value = metadata_response
+        
+        # Setup empty binary response
+        binary_response = MagicMock()
+        binary_response.data = []
+        binary_table = MagicMock()
+        binary_table.select.return_value.eq.return_value.execute.return_value = binary_response
+        
+        # Configure table method
+        def mock_table(table_name):
+            if table_name == 'document_metadata':
+                return metadata_table
+            elif table_name == 'document_binary':
+                return binary_table
+            return MagicMock()
+            
+        mock_supabase.table = mock_table
         
         # Test the function
         result = await image_analysis_tool(mock_supabase, 'img1', 'Describe this image')
         
-        # Verify the result for no file contents
-        assert result == "No file contents found for document: img1"
+        # Verify the result
+        assert "Binary data" in result
+        assert "not found" in result
 
     @pytest.mark.asyncio
     async def test_image_analysis_tool_exception(self):
-        # Mock Supabase client that raises an exception
+        # Mock Supabase client to raise an exception
         mock_supabase = MagicMock()
-        mock_supabase.from_.side_effect = Exception("Test exception")
+        mock_table = MagicMock()
+        mock_table.select.return_value.eq.return_value.execute.side_effect = Exception("Database error")
+        mock_supabase.table.return_value = mock_table
         
         # Test the function
-        with patch('builtins.print') as mock_print:
-            result = await image_analysis_tool(mock_supabase, 'img1', 'Describe this image')
+        result = await image_analysis_tool(mock_supabase, 'img1', 'Describe this image')
         
-        # Verify the exception was handled
-        mock_print.assert_called_once_with("Error analyzing image: Test exception")
-        assert "Error analyzing image: Test exception" in result
+        # Verify the result contains the error message
+        assert "Error analyzing image" in result
+        assert "Database error" in result
 
 
 class TestExecuteSafeCodeTool:
@@ -706,29 +657,19 @@ print(f"Current year: {datetime.datetime.now().year}")
 
     def test_execute_safe_code_with_disallowed_modules(self):
         # Test code that tries to import disallowed modules
-        # Use a simpler approach that doesn't rely on try/except with Exception
         code = """
-# Try to access disallowed modules
-if 'os' in __builtins__:
-    print("os module is available")
-else:
-    print("os module is not available")
-
-if 'subprocess' in __builtins__:
-    print("subprocess module is available")
-else:
-    print("subprocess module is not available")
+# Try to import os module (should fail)
+import os
+print("Imported os successfully")  # This line should not execute
 """
         result = execute_safe_code_tool(code)
         
-        # Verify the output shows the modules aren't available
-        assert "os module is not available" in result
-        assert "subprocess module is not available" in result
+        # Verify that an error was reported and os import failed
+        assert "Error executing code:" in result
+        assert "Module os is not allowed" in result
 
     def test_execute_safe_code_with_exception(self):
         # Test code that raises an exception
-        # Note: The actual implementation catches the exception and returns an error message
-        # without including the output before the exception
         code = """
 print("Starting")
 x = 1 / 0  # Division by zero

@@ -11,15 +11,11 @@ from typing import List
 import os
 
 from prompt import AGENT_SYSTEM_PROMPT
-from tools import (
-    web_search_tool,
-    image_analysis_tool,
-    retrieve_relevant_documents_tool,
-    list_documents_tool,
-    get_document_content_tool,
-    execute_sql_query_tool,
-    execute_safe_code_tool
-) 
+from tools.web.search import web_search_tool
+from tools.image.analysis import image_analysis_tool
+from tools.document.retrieval import retrieve_relevant_documents_tool, list_documents_tool, get_document_content_tool
+from tools.document.sql import execute_sql_query_tool
+from tools.code.execution import execute_safe_code_tool
 
 load_dotenv(override=True)
 

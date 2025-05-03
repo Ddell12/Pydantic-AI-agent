@@ -39,7 +39,7 @@ This document outlines the specific implementation tasks for building the MVP of
 - [X] Add support for optional local models
 - [X] Create environment variable configuration
 - [X] Implement conversation history
-- [ ] Write unit tests (in later module)
+- [X] Write unit tests (in later module)
 
 ## Phase 3: Memory System
 

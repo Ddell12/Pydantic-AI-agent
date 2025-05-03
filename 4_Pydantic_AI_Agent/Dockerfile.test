@@ -1,0 +1,41 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir pytest pytest-asyncio
+
+# Copy only the necessary files for testing
+COPY agent.py .
+COPY prompt.py .
+COPY tools.py .
+COPY clients.py .
+COPY tests/ ./tests/
+
+# Set environment variables for testing
+ENV LLM_PROVIDER=openai
+ENV LLM_BASE_URL=https://api.openai.com/v1
+ENV LLM_API_KEY=test-api-key
+ENV LLM_CHOICE=gpt-4o-mini
+ENV VISION_LLM_CHOICE=gpt-4o-mini
+ENV EMBEDDING_PROVIDER=openai
+ENV EMBEDDING_BASE_URL=https://api.openai.com/v1
+ENV EMBEDDING_API_KEY=test-api-key
+ENV EMBEDDING_MODEL_CHOICE=text-embedding-3-small
+ENV SUPABASE_URL=https://test-supabase-url.com
+ENV SUPABASE_SERVICE_KEY=test-supabase-key
+ENV BRAVE_API_KEY=test-brave-key
+ENV SEARXNG_BASE_URL=http://test-searxng-url.com
+
+# Command to run the tests
+CMD ["python", "-m", "pytest", "tests/test_agent.py", "-v"]
